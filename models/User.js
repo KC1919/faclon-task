@@ -11,12 +11,12 @@ const userSchema = mongoose.Schema({
     username: {
         type: String,
         required: [true, 'User must have a username!'],
-        unique: true
+        unique: [true, 'This username is taken. Please choose a different username!']
     },
     email: {
         type: String,
         required: [true, 'User must have an email!'],
-        unique: true,
+        unique: [true, 'This email already exist. Please choose a different email!'],
         validate: [validator.isEmail, 'Please provide an valid email!']
     },
     password: {
@@ -63,6 +63,11 @@ userSchema.pre('save', async function (next) {
     this.passwordConfirm = undefined;
     next();
 })
+
+userSchema.methods.checkPassword = async function (password, userPassword) {
+    const status = await bcrypt.compare(password, userPassword);
+    return status;
+}
 
 //Modelling the user schema into a user model 
 const User = mongoose.model('User', userSchema);

@@ -1,8 +1,34 @@
-const User = require('../models/Student');
+const User = require('../models/User');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
-module.exports.login = async (req, res) => {
+const signToken = async (payload) => {
+    const token = await jwt.sign(payload, process.env.JWT_SECRET_KEY)
+    return token;
+}
+
+const createSendToken = async (user, statusCode, res) => {
+
+    const token = await signToken;
+    const cookieOptions = {
+        maxAge: Date.now() + 24 * 60 * 60 * 1000,
+        httpOnly: false
+    }
+
+    res.cookie('secret', token, cookieOptions);
+
+    user.password = undefined;
+
+    res.status(statusCode).json({
+        status: 'success',
+        token,
+        data: {
+            user,
+        },
+    })
+}
+
+module.exports.login = async (req, res, next) => {
     try {
 
         const {
@@ -10,10 +36,12 @@ module.exports.login = async (req, res) => {
             password
         } = req.body;
 
-        const user = await Student.findOne({
+        // Checking if the user exist
+        const user = await User.findOne({
             "email": email
         });
 
+        // if user not exist
         if (user === null) {
             return res.status(400).json({
                 message: "User does not exist, please register",
@@ -21,22 +49,12 @@ module.exports.login = async (req, res) => {
             });
         }
 
-        if (bcrypt.compareSync(password, user.password) === true) {
+        // checking if the user provided password matches the saved password in db
+        const checkPassword = await user.checkPassword(password, user.password);
 
-            const token = jwt.sign({
-                "userId": user._id,
-                "email": email
-            }, process.env.SECRET_KEY);
-
-            res.cookie('secret', token, {
-                maxAge: 86400000,
-                httpOnly: false
-            });
-
-            return res.status(200).json({
-                message: "User Logged in successfully",
-                success: true
-            });
+        // if password is correct, we return a JWT token back to the user
+        if (checkPassword === true) {
+            createSendToken(user, 200, res);
         } else {
             return res.status(401).json({
                 message: "Authentication failed!",
@@ -54,31 +72,42 @@ module.exports.login = async (req, res) => {
     }
 }
 
-module.exports.register = async (req, res) => {
+module.exports.register = async (req, res, next) => {
     try {
 
-        const user = await Student.findOne({
+        // checking if user with this email already exist
+        const user = await User.findOne({
             email: req.body.email
         });
 
+        // if does email exists
         if (user !== null) {
-            console.log("Student already exists");
+            console.log("User already exists");
             return res.status(400).json({
-                message: "Student already exists",
+                message: "User already exists",
                 success: false
             });
         }
 
-        const hashPass = bcrypt.hashSync(req.body.password, 5);
+        // else, we create a new user with the provided user details
+        const newUser = await User.create(req.body);
 
-        req.body.password = hashPass;
-
-        const newUser = await Student.create(req.body);
-
+        // we check if the user is created successfully
         if (newUser != undefined) {
+            // we generate a JWT token
+            const token = await signToken({ userId: newUser._id, email: newUser.email })
+
+            // we make password as undefined so that it is not visible in the user data
+            // sent back to the client side
+            newUser.password = undefined;
+
             return res.status(200).json({
-                message: "Student Registered successfully",
-                success: true
+                message: "User Registered successfully",
+                success: true,
+                token,
+                data: {
+                    newUser
+                }
             });
         } else {
             return res.status(400).json({
@@ -86,12 +115,10 @@ module.exports.register = async (req, res) => {
                 success: false
             });
         }
-
-
     } catch (error) {
-        console.log("Failed to register student, internal server error", error);
+        console.log("Failed to register User, internal server error", error);
         return res.status(500).json({
-            message: "Failed to register student, internal server error",
+            message: "Failed to register User, internal server error",
             success: false,
             error: error.message
         });
