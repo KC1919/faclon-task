@@ -9,7 +9,7 @@ const signToken = async (payload) => {
 
 const createSendToken = async (user, statusCode, res) => {
 
-    const token = await signToken;
+    const token = await signToken({userId:user._id, email:user.email});
     const cookieOptions = {
         maxAge: Date.now() + 24 * 60 * 60 * 1000,
         httpOnly: false

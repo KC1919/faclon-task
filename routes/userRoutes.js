@@ -1,8 +1,11 @@
-const express=require('express');
-const router=express.Router();
+const express = require('express');
+const router = express.Router();
+const verify = require('../middlewares/verifyUser');
+const userController = require('../controllers/userController');
 
 router
-    .patch('/update/:id')
-    .delete('/delete/:id')
+    .post('/request', verify, userController.makeFriendRequest)
+    .patch('/update', verify)
+    .delete('/delete/:id', verify);
 
-module.exports=router;
+module.exports = router;

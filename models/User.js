@@ -39,7 +39,17 @@ const userSchema = mongoose.Schema({
         username: {
             type: String,
             required: true
-        },
+        }
+    }],
+    requestSent: [{
+        'username': String,
+        status: {
+            type: String,
+            default: 'pending'
+        }
+    }],
+    requestReceived: [{
+        'username': String,
         status: {
             type: String,
             default: 'pending'

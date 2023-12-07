@@ -1,11 +1,11 @@
 const express=require('express');
 const router=express.Router();
 const authController=require('../controllers/authController');
+const verify = require('../middlewares/verifyUser');
 
 router
     .post('/login', authController.login)
     .post('/signup', authController.register)
-    .patch('/update/:id')
-    .delete('/delete/:id')
+    .post('/logout', verify, authController.logout)
 
 module.exports=router;
