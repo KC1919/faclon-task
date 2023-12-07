@@ -2,7 +2,9 @@ const User = require('../models/User');
 
 module.exports.makeFriendRequest = async (req, res, next) => {
     try {
-        const { username } = req.body;
+        const {
+            username
+        } = req.body;
 
         // get user details
         const user = await User.findOne({
@@ -60,35 +62,31 @@ module.exports.makeFriendRequest = async (req, res, next) => {
         // Make friend request
 
         // Adding friend username to the user's list of sent requests
-        User.updateOne(
-            {
+        User.updateOne({
                 email: req.email,
-            },
-            {
+            }, {
                 $push: {
-                    requestSent: { username },
+                    requestSent: {
+                        username,
+                    },
                 },
-            },
-            {
+            }, {
                 upsert: true,
-            }
-        )
+            })
             .then((result) => {
                 if (result.modifiedCount > 0) {
                     // Adding sender username to the frienduser's list of received requests
-                    User.updateOne(
-                        {
+                    User.updateOne({
                             username: username,
-                        },
-                        {
+                        }, {
                             $push: {
-                                requestReceived: { username: user.username },
+                                requestReceived: {
+                                    username: user.username,
+                                },
                             },
-                        },
-                        {
+                        }, {
                             upsert: true,
-                        }
-                    )
+                        })
                         .then((result) => {
                             if (result.modifiedCount > 0) {
                                 return res.status(200).json({
@@ -161,85 +159,114 @@ module.exports.acceptFriendRequest = async (req, res, next) => {
 
         // else accept the request
         // remove the request from the receiver-user list
-        User.updateOne(
-            {
+        User.updateOne({
                 email: req.email,
                 requestReceived: {
                     $elemMatch: {
                         username: username,
                     },
                 },
-            },
-            {
+            }, {
                 $pull: {
-                    'requestReceived.$.username': username,
+                    requestReceived: username,
                 },
-            }
-        )
+            })
             .then((result) => {
                 if (result.modifiedCount > 0) {
                     // remove the request from sender-user list
-                    User.updateOne(
-                        {
+                    User.updateOne({
                             username: username,
                             requestSent: {
                                 $elemMatch: {
                                     username: user.username,
                                 },
                             },
-                        },
-                        {
+                        }, {
                             $pull: {
-                                'requestSent.$.username': user.username,
+                                requestSent: user.username,
                             },
-                        }
-                    ).then((result) => {
-                        if (result.modifiedCount > 0) {
-                            // add frienduser to the current user friend list
-                            User.updateOne(
-                                {
-                                    email: req.email,
-                                },
-                                {
-                                    $push: {
-                                        username: username,
-                                    },
-                                }
-                            ).then((result) => {
-                                if (result.matchedCount > 0) {
-                                    // add current user in the frienduser friend list
-                                    User.updateOne(
-                                        {
+                        })
+                        .then((result) => {
+                            if (result.modifiedCount > 0) {
+                                // add frienduser to the current user friend list
+                                User.updateOne({
+                                        email: req.email,
+                                    }, {
+                                        $push: {
                                             username: username,
                                         },
-                                        {
-                                            $push: {
-                                                username: user.username,
-                                            },
+                                    })
+                                    .then((result) => {
+                                        if (result.matchedCount > 0) {
+                                            // add current user in the frienduser friend list
+                                            User.updateOne({
+                                                    username: username,
+                                                }, {
+                                                    $push: {
+                                                        username: user.username,
+                                                    },
+                                                })
+                                                .then((result) => {
+                                                    if (
+                                                        result.modifiedCount > 0
+                                                    ) {
+                                                        return res
+                                                            .status(200)
+                                                            .json({
+                                                                message: 'Friend Request Accepted',
+                                                                success: true,
+                                                            });
+                                                    }
+                                                })
+                                                .catch((error) => {
+                                                    console.log(
+                                                        'Failed to accept friend request, mongo error!!',
+                                                        error
+                                                    );
+                                                    return res
+                                                        .status(500)
+                                                        .json({
+                                                            message: 'Failed to accept request, mongo error!',
+                                                            success: false,
+                                                            error: error.message,
+                                                        });
+                                                });
                                         }
-                                    ).then((result) => {
-                                        if (result.modifiedCount > 0) {
-                                            return res.status(200).json({
-                                                message:
-                                                    'Friend Request Accepted',
-                                                success: true,
-                                            });
-                                        }
-                                    });
-                                }
+                                    })
+                                    .catch((error) => {
+                                        console.log(
+                                            'Failed to add current user to the frienduser friend list',
+                                            error
+                                        );
+                                        return res.status(500).json({
+                                            message: 'Failed to accept request, mongo error!',
+                                            success: false,
+                                            error: error.message,
+                                        });
+                                    })
+                            }
+                        }).catch((error) => {
+                            console.log(
+                                'Failed to add frienduser to the current user friend list',
+                                error
+                            );
+                            return res.status(500).json({
+                                message: 'Failed to accept request, mongo error!',
+                                success: false,
+                                error: error.message,
                             });
-                        }
-                    });
+                        });
                 }
             })
             .catch((error) => {
                 console.log(
-                    'Failed to accept friend request, server error!',
+                    'Failed to remove the request from sender-user list',
                     error
                 );
                 return res.status(500).json({
-                    message: 'Failed to accept friend request, server error!',
+                    message: 'Failed to accept request, mongo error!',
                     success: false,
+                    error: error.message,
                 });
             });
     } catch (error) {
@@ -252,6 +279,5 @@ module.exports.acceptFriendRequest = async (req, res, next) => {
 };
 
 module.exports.rejectFriendRequest = async () => {
-    try {
-    } catch (error) {}
+    try {} catch (error) {}
 };
