@@ -6,7 +6,8 @@ const userController = require('../controllers/userController');
 router
     .post('/sendrequest', verify, userController.makeFriendRequest)
     .post('/acceptrequest/:username', verify, userController.acceptFriendRequest)
-    .patch('/update', verify)
-    .delete('/delete/:id', verify);
+    .patch('/update', verify, userController.updateUserDetails)
+    .patch('/updatePassword', verify, userController.updateUserPassword)
+    .delete('/deleteAccount/', verify, userController.deleteUserAccount);
 
 module.exports = router;

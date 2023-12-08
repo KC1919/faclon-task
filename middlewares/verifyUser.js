@@ -9,11 +9,11 @@ const verify = async (req, res, next) => {
 
         next();
     } catch (error) {
-        console.log("Failed to verify user!", error);
+        console.log("Failed to verify user. Please login!", error);
         res.status(500).json({
             message: 'Failed to verify user, server error!',
             status: false,
-            error: error.message
+            error: error
         })
     }
 }

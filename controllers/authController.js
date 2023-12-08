@@ -101,7 +101,7 @@ module.exports.register = async (req, res, next) => {
             // sent back to the client side
             newUser.password = undefined;
 
-            return res.status(200).json({
+            return res.status(201).json({
                 message: "User Registered successfully",
                 success: true,
                 token,

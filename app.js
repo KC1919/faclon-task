@@ -4,8 +4,9 @@ const dotenv = require('dotenv');
 const PORT = 3000;
 const authRouter = require('./routes/authRoutes');
 const userRouter = require('./routes/userRoutes');
+const postRouter=require('./routes/postRoutes');
 const cookieParser = require('cookie-parser');
-dotenv.config({ path: './config/.env' })
+dotenv.config({ path: './config/.env' });
 const {connectDb} = require('./config/db');
 
 app.use(cookieParser());
@@ -15,6 +16,7 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/users', userRouter);
+app.use('/api/v1/posts', postRouter);
 
 app.listen(PORT || 5000, async () => {
     const client=await connectDb();

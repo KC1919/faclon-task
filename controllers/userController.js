@@ -1,7 +1,9 @@
 const User = require('../models/User');
+const Post = require('../models/Post');
 const app = require('../app');
 const mongoose = require('mongoose');
 const { MongoError } = require('mongodb')
+const validator = require('validator');
 // const {client}=require('../config/db')
 // const client=app.get(client);
 
@@ -32,6 +34,11 @@ module.exports.makeFriendRequest = async (req, res, next) => {
         const user = await User.findOne({
             email: req.email,
         }, null, { session });
+
+        // check if the user is not trying to send request to itself
+        if (username === user.username) {
+            return res.status(400).json({ 'message': 'Cannot send friend request to yourself!', success: false })
+        }
 
         // find frienduser whether it exist or not
         const frienduser = await User.findOne({
@@ -111,7 +118,8 @@ module.exports.makeFriendRequest = async (req, res, next) => {
         }, { session });
 
         await session.commitTransaction();
-        res.status(200).json({ 'message': 'Friend request sent successfully!', success: true })
+        await client.close();
+        return res.status(200).json({ 'message': 'Friend request sent successfully!', success: true })
 
     } catch (error) {
         if (error instanceof MongoError && error.hasErrorLabel('UnknownTransactionCommitResult')) {
@@ -195,7 +203,7 @@ module.exports.acceptFriendRequest = async (req, res, next) => {
             },
         }, {
             $pull: {
-                'requestReceived':{'username': username},
+                'requestReceived': { 'username': username },
             },
         }, { session })
 
@@ -209,7 +217,7 @@ module.exports.acceptFriendRequest = async (req, res, next) => {
             },
         }, {
             $pull: {
-                'requestSent':{'username': user.username },
+                'requestSent': { 'username': user.username },
             },
         }, { session })
 
@@ -218,7 +226,7 @@ module.exports.acceptFriendRequest = async (req, res, next) => {
             'email': req.email,
         }, {
             $push: {
-                'friends':{'username': username}
+                'friends': { 'username': username }
             },
         }, { session })
 
@@ -227,11 +235,12 @@ module.exports.acceptFriendRequest = async (req, res, next) => {
             'username': username,
         }, {
             $push: {
-                'friends':{'username': user.username},
+                'friends': { 'username': user.username },
             },
         }, { session })
 
         await session.commitTransaction();
+        await client.close();
         return res.status(200).json({ message: 'Friend Request Accepted', success: true });
 
     } catch (error) {
@@ -256,6 +265,115 @@ module.exports.acceptFriendRequest = async (req, res, next) => {
     }
 };
 
-module.exports.rejectFriendRequest = async () => {
+module.exports.rejectFriendRequest = async (req, res, next) => {
     try { } catch (error) { }
 };
+
+module.exports.deleteUserAccount = async (req, res, next) => {
+    try {
+        const conn = await mongoose.connect(process.env.DB_URL);
+        const client = conn.connection.client;
+
+        const session = client.startSession();
+
+        session.startTransaction(transactionOptions);
+
+        // First delete all user posts
+
+        await Post.deleteMany({ 'user': req.userId });
+
+        // Delete user account
+
+        await User.findByIdAndDelete({ '_id': req.userId });
+
+        await session.commitTransaction();
+        await client.close();
+
+        return res.status(204).json({ 'message': 'User account deleted!', success: true, status: 'success' })
+
+    } catch (error) {
+        if (error instanceof MongoError && error.hasErrorLabel('UnknownTransactionCommitResult')) {
+            // add your logic to retry or handle the error
+            console.log('UnknownTransactionCommitResult');
+        }
+
+        else if (error instanceof MongoError && error.hasErrorLabel('TransientTransactionError')) {
+            // add your logic to retry or handle the error
+            console.log('TransientTransactionError');
+        } else {
+            console.log('An error occured in the transaction, performing a data rollback:' + error);
+        }
+        await session.abortTransaction();
+
+        console.log('Failed to delete user account, server error!', error);
+        return res.status(500).json({
+            message: 'Failed to delete user account, server error!',
+            success: false,
+        });
+    }
+}
+
+module.exports.updateUserDetails = async (req, res, next) => {
+    try {
+        if (req.body && req.body.password) {
+            return res.status(400).json({ message: 'Please use /api/v1/updatePassword API to update password!', success: false, status: 'fail' })
+        }
+
+        const user = await User.findOne({ _id: req.userId });
+
+        if (user === null) {
+            return res.status(400).json({ message: 'User does not exist!', success: false, status: 'fail' })
+        }
+
+        const { name, email } = req.body;
+        let updateData = {}
+        if (name !== null && name.length !== 0) {
+            updateData.name = name;
+        }
+
+        if (email !== null && email.length !== 0) {
+            updateData.email = email;
+        }
+
+        const updatedUser = await User.findByIdAndUpdate({ _id: req.userId }, updateData, { runValidators: true });
+
+        updatedUser.password = undefined;
+
+        return res.status(203).json({
+            message: 'User details updated!', success: true, status: 'success', data: {
+                updatedUser
+            }
+        });
+
+    } catch (error) {
+        console.log(error);
+        return res.status(500).json({ message: 'Failed to update user details, server error!', success: false, status: 'fail', error: error });
+    }
+}
+
+module.exports.updateUserPassword = async (req, res, next) => {
+    try {
+
+        const { password, passwordConfirm } = req.body;
+
+        if (password !== null && passwordConfirm !== null) {
+
+            if (password === passwordConfirm) {
+                const user = await User.findOne({ _id: req.userId });
+
+                user.password=password;
+                user.passwordConfirm=passwordConfirm;
+
+                await user.save();
+                return res.status(203).json({ message: 'Password updated successfully!', success: true, status: 'success' })
+            }
+            else {
+                return res.status(400).json({ message: 'Password and confirm password do not match!', success: false, status: 'fail' })
+            }
+
+        }
+    } catch (error) {
+        console.log(error);
+        return res.status(500).json({ message: 'Failed to update user password, server error!', success: false, status: 'fail', error: error });
+    }
+}
