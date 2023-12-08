@@ -125,12 +125,9 @@ module.exports.register = async (req, res, next) => {
     }
 }
 
-module.exports.logout = (req, res) => {
+module.exports.logout = (req, res, next) => {
     try {
-        res.cookie('secret', {
-            maxAge: Date.now()
-        });
-
+        res.clearCookie('secret');
         return res.status(200).json({
             message: "Logged out successfully!",
             success: true

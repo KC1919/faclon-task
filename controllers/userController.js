@@ -1,7 +1,29 @@
 const User = require('../models/User');
+const app = require('../app');
+const mongoose = require('mongoose');
+const { MongoError } = require('mongodb')
+// const {client}=require('../config/db')
+// const client=app.get(client);
+
+// console.log(client);
+
+const transactionOptions = {
+    readPreference: 'primary',
+    readConcern: { level: 'local' },
+    writeConcern: { w: 'majority' },
+    maxCommitTimeMS: 1000
+};
 
 module.exports.makeFriendRequest = async (req, res, next) => {
+
+    const conn = await mongoose.connect(process.env.DB_URL)
+    const client = conn.connection.client;
+    const session = client.startSession();
+
     try {
+
+        session.startTransaction(transactionOptions);
+
         const {
             username
         } = req.body;
@@ -9,12 +31,12 @@ module.exports.makeFriendRequest = async (req, res, next) => {
         // get user details
         const user = await User.findOne({
             email: req.email,
-        });
+        }, null, { session });
 
         // find frienduser whether it exist or not
         const frienduser = await User.findOne({
-            username: username,
-        });
+            'username': username,
+        }, null, { session });
 
         // if does not exists
         if (frienduser === null) {
@@ -27,12 +49,12 @@ module.exports.makeFriendRequest = async (req, res, next) => {
         // check if frienduser is already present in user's friend list
         const checkFriendUser = await User.findOne({
             email: req.email,
-            friends: {
+            'friends': {
                 $elemMatch: {
-                    username: username,
+                    'username': username,
                 },
             },
-        });
+        }, null, { session });
 
         if (checkFriendUser !== null) {
             return res.status(400).json({
@@ -45,12 +67,12 @@ module.exports.makeFriendRequest = async (req, res, next) => {
 
         const checkRequest = await User.findOne({
             email: req.email,
-            requestSent: {
+            'requestSent': {
                 $elemMatch: {
-                    username: username,
+                    'username': username,
                 },
             },
-        });
+        }, null, { session });
 
         if (checkRequest !== null) {
             return res.status(400).json({
@@ -62,54 +84,50 @@ module.exports.makeFriendRequest = async (req, res, next) => {
         // Make friend request
 
         // Adding friend username to the user's list of sent requests
-        User.updateOne({
-                email: req.email,
-            }, {
-                $push: {
-                    requestSent: {
-                        username,
-                    },
+        await User.updateOne({
+            email: req.email,
+        }, {
+            $push: {
+                'requestSent': {
+                    username,
                 },
-            }, {
-                upsert: true,
-            })
-            .then((result) => {
-                if (result.modifiedCount > 0) {
-                    // Adding sender username to the frienduser's list of received requests
-                    User.updateOne({
-                            username: username,
-                        }, {
-                            $push: {
-                                requestReceived: {
-                                    username: user.username,
-                                },
-                            },
-                        }, {
-                            upsert: true,
-                        })
-                        .then((result) => {
-                            if (result.modifiedCount > 0) {
-                                return res.status(200).json({
-                                    message: 'Friend Request Sent!',
-                                    success: true,
-                                });
-                            } else {
-                                return res.status(400).json({
-                                    message: 'Failed to send friend request!',
-                                    success: false,
-                                });
-                            }
-                        })
-                        .catch((err) => {
-                            console.log('Failed to send friend request!', err);
-                        });
-                }
-            })
-            .catch((err) => {
-                console.log('Failed to send request!!!', err);
-            });
+            },
+        }, {
+            upsert: true,
+        }, { session })
+
+        // Adding sender username to the frienduser's list of received requests
+
+        await User.updateOne({
+            'username': username,
+        }, {
+            $push: {
+                'requestReceived': {
+                    username: user.username,
+                },
+            },
+        }, {
+            upsert: true,
+        }, { session });
+
+        await session.commitTransaction();
+        res.status(200).json({ 'message': 'Friend request sent successfully!', success: true })
+
     } catch (error) {
-        console.log('Failed to send request, server error!', error);
+        if (error instanceof MongoError && error.hasErrorLabel('UnknownTransactionCommitResult')) {
+            // add your logic to retry or handle the error
+            console.log('UnknownTransactionCommitResult');
+        }
+
+        else if (error instanceof MongoError && error.hasErrorLabel('TransientTransactionError')) {
+            // add your logic to retry or handle the error
+            console.log('TransientTransactionError');
+        } else {
+            console.log('An error occured in the transaction, performing a data rollback:' + error);
+        }
+        await session.abortTransaction();
+
+        console.log('Failed to send friend request, server error!', error);
         return res.status(500).json({
             message: 'Failed to send friend request, server error!',
             success: false,
@@ -118,23 +136,31 @@ module.exports.makeFriendRequest = async (req, res, next) => {
 };
 
 module.exports.acceptFriendRequest = async (req, res, next) => {
+
+    const conn = await mongoose.connect(process.env.DB_URL)
+    const client = conn.connection.client;
+    const session = client.startSession();
+
     try {
+
+        session.startTransaction(transactionOptions);
+
         const username = req.params.username;
 
         // get user details
         const user = await User.findOne({
-            email: req.email,
-        });
+            'email': req.email,
+        }, {}, { session });
 
         // check if username exist in request user's received list
         const checkUser = await User.findOne({
-            email: req.email,
-            requestReceived: {
+            'email': req.email,
+            'requestReceived': {
                 $elemMatch: {
-                    username: username,
+                    'username': username,
                 },
             },
-        });
+        }, {}, { session });
 
         // if username does not exist
         if (checkUser === null) {
@@ -146,8 +172,8 @@ module.exports.acceptFriendRequest = async (req, res, next) => {
 
         // check if user who sent the request exists
         const friendUser = await User.findOne({
-            username: username,
-        });
+            'username': username,
+        }, {}, { session });
 
         // if user does not exist
         if (friendUser === null) {
@@ -157,119 +183,71 @@ module.exports.acceptFriendRequest = async (req, res, next) => {
             });
         }
 
-        // else accept the request
+        // ------else accept the request------
+
         // remove the request from the receiver-user list
-        User.updateOne({
-                email: req.email,
-                requestReceived: {
-                    $elemMatch: {
-                        username: username,
-                    },
+        await User.updateOne({
+            'email': req.email,
+            'requestReceived': {
+                $elemMatch: {
+                    'username': username,
                 },
-            }, {
-                $pull: {
-                    requestReceived: username,
+            },
+        }, {
+            $pull: {
+                'requestReceived':{'username': username},
+            },
+        }, { session })
+
+        // remove the request from sender-user list
+        await User.updateOne({
+            'username': username,
+            'requestSent': {
+                $elemMatch: {
+                    'username': user.username,
                 },
-            })
-            .then((result) => {
-                if (result.modifiedCount > 0) {
-                    // remove the request from sender-user list
-                    User.updateOne({
-                            username: username,
-                            requestSent: {
-                                $elemMatch: {
-                                    username: user.username,
-                                },
-                            },
-                        }, {
-                            $pull: {
-                                requestSent: user.username,
-                            },
-                        })
-                        .then((result) => {
-                            if (result.modifiedCount > 0) {
-                                // add frienduser to the current user friend list
-                                User.updateOne({
-                                        email: req.email,
-                                    }, {
-                                        $push: {
-                                            username: username,
-                                        },
-                                    })
-                                    .then((result) => {
-                                        if (result.matchedCount > 0) {
-                                            // add current user in the frienduser friend list
-                                            User.updateOne({
-                                                    username: username,
-                                                }, {
-                                                    $push: {
-                                                        username: user.username,
-                                                    },
-                                                })
-                                                .then((result) => {
-                                                    if (
-                                                        result.modifiedCount > 0
-                                                    ) {
-                                                        return res
-                                                            .status(200)
-                                                            .json({
-                                                                message: 'Friend Request Accepted',
-                                                                success: true,
-                                                            });
-                                                    }
-                                                })
-                                                .catch((error) => {
-                                                    console.log(
-                                                        'Failed to accept friend request, mongo error!!',
-                                                        error
-                                                    );
-                                                    return res
-                                                        .status(500)
-                                                        .json({
-                                                            message: 'Failed to accept request, mongo error!',
-                                                            success: false,
-                                                            error: error.message,
-                                                        });
-                                                });
-                                        }
-                                    })
-                                    .catch((error) => {
-                                        console.log(
-                                            'Failed to add current user to the frienduser friend list',
-                                            error
-                                        );
-                                        return res.status(500).json({
-                                            message: 'Failed to accept request, mongo error!',
-                                            success: false,
-                                            error: error.message,
-                                        });
-                                    })
-                            }
-                        }).catch((error) => {
-                            console.log(
-                                'Failed to add frienduser to the current user friend list',
-                                error
-                            );
-                            return res.status(500).json({
-                                message: 'Failed to accept request, mongo error!',
-                                success: false,
-                                error: error.message,
-                            });
-                        });
-                }
-            })
-            .catch((error) => {
-                console.log(
-                    'Failed to remove the request from sender-user list',
-                    error
-                );
-                return res.status(500).json({
-                    message: 'Failed to accept request, mongo error!',
-                    success: false,
-                    error: error.message,
-                });
-            });
+            },
+        }, {
+            $pull: {
+                'requestSent':{'username': user.username },
+            },
+        }, { session })
+
+        // add frienduser to the current user friend list
+        await User.updateOne({
+            'email': req.email,
+        }, {
+            $push: {
+                'friends':{'username': username}
+            },
+        }, { session })
+
+        // add current user in the frienduser friend list
+        await User.updateOne({
+            'username': username,
+        }, {
+            $push: {
+                'friends':{'username': user.username},
+            },
+        }, { session })
+
+        await session.commitTransaction();
+        return res.status(200).json({ message: 'Friend Request Accepted', success: true });
+
     } catch (error) {
+        if (error instanceof MongoError && error.hasErrorLabel('UnknownTransactionCommitResult')) {
+            // add your logic to retry or handle the error
+            console.log('UnknownTransactionCommitResult');
+        }
+
+        else if (error instanceof MongoError && error.hasErrorLabel('TransientTransactionError')) {
+            // add your logic to retry or handle the error
+            console.log('TransientTransactionError');
+        } else {
+            console.log('An error occured in the transaction, performing a data rollback:' + error);
+        }
+        await session.abortTransaction();
+
         console.log('Failed to accept friend request, server error!', error);
         return res.status(500).json({
             message: 'Failed to accept friend request, server error!',
@@ -279,5 +257,5 @@ module.exports.acceptFriendRequest = async (req, res, next) => {
 };
 
 module.exports.rejectFriendRequest = async () => {
-    try {} catch (error) {}
+    try { } catch (error) { }
 };

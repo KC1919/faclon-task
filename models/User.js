@@ -42,14 +42,14 @@ const userSchema = mongoose.Schema({
         }
     }],
     requestSent: [{
-        'username': String,
+        username: String,
         status: {
             type: String,
             default: 'pending'
         }
     }],
     requestReceived: [{
-        'username': String,
+        username: String,
         status: {
             type: String,
             default: 'pending'
