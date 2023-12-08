@@ -16,6 +16,7 @@ const transactionOptions = {
     maxCommitTimeMS: 1000
 };
 
+// function to send friend request
 module.exports.makeFriendRequest = async (req, res, next) => {
 
     const conn = await mongoose.connect(process.env.DB_URL)
@@ -143,6 +144,7 @@ module.exports.makeFriendRequest = async (req, res, next) => {
     }
 };
 
+//function to handle accept friend request
 module.exports.acceptFriendRequest = async (req, res, next) => {
 
     const conn = await mongoose.connect(process.env.DB_URL)
@@ -265,10 +267,12 @@ module.exports.acceptFriendRequest = async (req, res, next) => {
     }
 };
 
+// function to reject friend request
 module.exports.rejectFriendRequest = async (req, res, next) => {
     try { } catch (error) { }
 };
 
+//function to delete user account
 module.exports.deleteUserAccount = async (req, res, next) => {
     try {
         const conn = await mongoose.connect(process.env.DB_URL);
@@ -276,6 +280,7 @@ module.exports.deleteUserAccount = async (req, res, next) => {
 
         const session = client.startSession();
 
+        // starting a transaction
         session.startTransaction(transactionOptions);
 
         // First delete all user posts
@@ -286,7 +291,10 @@ module.exports.deleteUserAccount = async (req, res, next) => {
 
         await User.findByIdAndDelete({ '_id': req.userId });
 
+        // commit the trasaction
         await session.commitTransaction();
+
+        //closing the current temo database connection
         await client.close();
 
         return res.status(204).json({ 'message': 'User account deleted!', success: true, status: 'success' })
@@ -313,20 +321,27 @@ module.exports.deleteUserAccount = async (req, res, next) => {
     }
 }
 
+//function to update user details
 module.exports.updateUserDetails = async (req, res, next) => {
     try {
+        // checking if the user has password or not
         if (req.body && req.body.password) {
             return res.status(400).json({ message: 'Please use /api/v1/updatePassword API to update password!', success: false, status: 'fail' })
         }
 
+        // finding user
         const user = await User.findOne({ _id: req.userId });
 
+        // is user does not exist return
         if (user === null) {
             return res.status(400).json({ message: 'User does not exist!', success: false, status: 'fail' })
         }
 
+        // extract user data
         const { name, email } = req.body;
         let updateData = {}
+
+        // validate name and email
         if (name !== null && name.length !== 0) {
             updateData.name = name;
         }
@@ -335,8 +350,10 @@ module.exports.updateUserDetails = async (req, res, next) => {
             updateData.email = email;
         }
 
+        // update user deatils in the database
         const updatedUser = await User.findByIdAndUpdate({ _id: req.userId }, updateData, { runValidators: true });
 
+        //setting password to undefined, becoz sending data on the client side
         updatedUser.password = undefined;
 
         return res.status(203).json({
@@ -351,26 +368,32 @@ module.exports.updateUserDetails = async (req, res, next) => {
     }
 }
 
+//function to update user password
 module.exports.updateUserPassword = async (req, res, next) => {
     try {
 
         const { password, passwordConfirm } = req.body;
 
+        // checking if pass and confirmPass are not empty
         if (password !== null && passwordConfirm !== null) {
 
+            //checking if both are exactly same
             if (password === passwordConfirm) {
+
+                //fetching the user
                 const user = await User.findOne({ _id: req.userId });
 
+                //updating the user password
                 user.password=password;
                 user.passwordConfirm=passwordConfirm;
 
+                // this will save the user with hashed password, becoz of presave hooks
                 await user.save();
                 return res.status(203).json({ message: 'Password updated successfully!', success: true, status: 'success' })
             }
             else {
                 return res.status(400).json({ message: 'Password and confirm password do not match!', success: false, status: 'fail' })
             }
-
         }
     } catch (error) {
         console.log(error);

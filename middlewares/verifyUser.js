@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 
+// function to verify JWT token with every request to the protected routes
 const verify = async (req, res, next) => {
     try {
         const token = req.cookies['secret'];
