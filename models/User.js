@@ -46,6 +46,10 @@ const userSchema = mongoose.Schema({
         status: {
             type: String,
             default: 'pending'
+        },
+        time: {
+            type: Number,
+            default: ()=>{return (Date.now() + Number(365*24*60*60*1000))}
         }
     }],
     requestReceived: [{

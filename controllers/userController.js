@@ -72,21 +72,34 @@ module.exports.makeFriendRequest = async (req, res, next) => {
         }
 
         // Check if request has already been made to the frienduser
-
+        // and the request send time is less than a year
         const checkRequest = await User.findOne({
             email: req.email,
             'requestSent': {
                 $elemMatch: {
-                    'username': username,
+                    'username': username
                 },
             },
         }, null, { session });
 
         if (checkRequest !== null) {
-            return res.status(400).json({
-                message: 'Friend request already sent!',
-                status: false,
-            });
+
+            const checkRequestTime = await User.findOne({
+                email: req.email,
+                'requestSent': {
+                    $elemMatch: {
+                        'username': username,
+                        'time': { $gte: Date.now() }
+                    },
+                },
+            }, null, { session });
+
+            if (checkRequestTime !== null) {
+                return res.status(400).json({
+                    message: 'Friend request already sent!',
+                    status: false,
+                });
+            }
         }
 
         // Make friend request
@@ -269,7 +282,92 @@ module.exports.acceptFriendRequest = async (req, res, next) => {
 
 // function to reject friend request
 module.exports.rejectFriendRequest = async (req, res, next) => {
-    try { } catch (error) { }
+
+    const conn = await mongoose.connect(process.env.DB_URL);
+    const client = conn.connection.client;
+    const session = client.startSession();
+
+    try {
+
+        session.startTransaction(transactionOptions);
+
+        const username = req.params.username;
+
+        // fetch logged in user details
+        const user = await User.findOne({ _id: req.userId });
+
+        // check if username exist in user's list of received friend requests 
+        const checkUser = await User.findOne({
+            'email': req.email,
+            'requestReceived': {
+                $elemMatch: {
+                    'username': username,
+                },
+            },
+        }, {}, { session });
+
+        // if username does not exist
+        if (checkUser === null) {
+            return res.status(400).json({
+                message: 'Friend request not received from this user!',
+                success: false,
+            });
+        }
+
+        // check if user who sent the request exists
+        const friendUser = await User.findOne({
+            'username': username,
+        }, {}, { session });
+
+        // if user does not exist
+        if (friendUser === null) {
+            return res.status(400).json({
+                message: 'User who sent the request does not exist!',
+                success: false,
+            });
+        }
+
+        // reject friend request
+
+        // remove request from the user's list of received requests
+        await User.updateOne({
+            'email': req.email,
+            'requestReceived': {
+                $elemMatch: {
+                    'username': username,
+                },
+            },
+        }, {
+            $pull: {
+                'requestReceived': { 'username': username },
+            },
+        }, { session });
+
+        await session.commitTransaction();
+        await client.close();
+
+        return res.status(200).json({ message: `Friend request from user:${username} rejected!`, status: 'success', success: true })
+
+    } catch (error) {
+        if (error instanceof MongoError && error.hasErrorLabel('UnknownTransactionCommitResult')) {
+            // add your logic to retry or handle the error
+            console.log('UnknownTransactionCommitResult');
+        }
+
+        else if (error instanceof MongoError && error.hasErrorLabel('TransientTransactionError')) {
+            // add your logic to retry or handle the error
+            console.log('TransientTransactionError');
+        } else {
+            console.log('An error occured in the transaction, performing a data rollback:' + error);
+        }
+        await session.abortTransaction();
+
+        console.log('Failed to reject friend request, server error!', error);
+        return res.status(500).json({
+            message: 'Failed to reject friend request, server error!',
+            success: false,
+        });
+    }
 };
 
 //function to delete user account
@@ -384,8 +482,8 @@ module.exports.updateUserPassword = async (req, res, next) => {
                 const user = await User.findOne({ _id: req.userId });
 
                 //updating the user password
-                user.password=password;
-                user.passwordConfirm=passwordConfirm;
+                user.password = password;
+                user.passwordConfirm = passwordConfirm;
 
                 // this will save the user with hashed password, becoz of presave hooks
                 await user.save();
