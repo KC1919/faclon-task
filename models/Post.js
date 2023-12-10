@@ -15,7 +15,23 @@ const postSchema = mongoose.Schema({
         type: String,
         required: true,
         minLength: 10
-    }
+    },
+    comments: [
+        {
+            user: {
+                type: String,
+                required: true
+            },
+            comment: {
+                type: String,
+                required: true
+            },
+            createdAt: {
+                type: Date,
+                default: Date.now
+            }
+        }
+    ]
 });
 
 const Post = mongoose.model('Post', postSchema);

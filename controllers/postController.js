@@ -1,4 +1,14 @@
 const Post = require('../models/Post');
+const User = require('../models/User')
+const mongoose = require('mongoose');
+const { MongoError } = require('mongodb')
+
+const transactionOptions = {
+    readPreference: 'primary',
+    readConcern: { level: 'local' },
+    writeConcern: { w: 'majority' },
+    maxCommitTimeMS: 1000
+};
 
 //function to handle new post creation
 module.exports.createPost = async (req, res, next) => {
@@ -88,7 +98,7 @@ module.exports.updatePost = async (req, res, next) => {
 
         //check if title or description both are not empty
         if (title !== null && title.length != 0 && description !== null && description.length != 0) {
-            
+
             //if not empty then update the post with new post data
             const updatedPost = await Post.updateOne({ _id: postId }, {
                 $set: {
@@ -122,11 +132,159 @@ module.exports.deletePost = async (req, res, next) => {
 
         //deleting the post
         await Post.findByIdAndDelete({ _id: postId });
-        
+
         return res.status(204).json({ message: 'Post deleted!', success: true, status: 'success' });
     } catch (error) {
         console.log('Failed to delete user post, server error!', error);
         return res.status(500).json({ message: 'Failed to delete user post, server error!', success: false, status: 'fail', error: error });
+    }
+}
+
+module.exports.addComment = async (req, res, next) => {
+
+    const conn = await mongoose.connect(process.env.DB_URL);
+    const client = conn.connection.client;
+    const session = client.startSession();
+
+    try {
+
+        session.startTransaction(transactionOptions);
+
+        const { postId, comment } = req.body;
+
+        // check if user exist or not
+        // const user = await User.findOne({ 'username': username }, {}, { session });
+
+        // if user does not exist
+        // if (user === null) {
+        //     return res.status(400).json({ message: 'User not found!', success: false, status: 'fail' });
+        // }
+
+        // check if post exist
+        const post = await Post.findOne({ _id: postId }, {}, { session });
+
+        // if post does not exist
+        if (post === null) {
+            return res.status(400).json({ message: 'Post not found!', success: false, status: 'fail' });
+        }
+
+        const commentData = {
+            'user': req.username,
+            'comment': comment
+        }
+
+        // add comment to the post
+        const updatedPost = await Post.findOneAndUpdate({ _id: postId }, {
+            $push: { 'comments': commentData }
+        }, { session });
+
+        await session.commitTransaction();
+        await client.close();
+
+        return res.status(201).json({
+            'message': 'Comment added successfully!',
+            succes: true,
+            status: 'success',
+            data: {
+                updatedPost
+            }
+        });
+    } catch (error) {
+        if (error instanceof MongoError && error.hasErrorLabel('UnknownTransactionCommitResult')) {
+            // add your logic to retry or handle the error
+            console.log('UnknownTransactionCommitResult');
+        }
+
+        else if (error instanceof MongoError && error.hasErrorLabel('TransientTransactionError')) {
+            // add your logic to retry or handle the error
+            console.log('TransientTransactionError');
+        } else {
+            console.log('An error occured in the transaction, performing a data rollback:' + error);
+        }
+        await session.abortTransaction();
+
+        console.log('Failed to add comment, server error!', error);
+        return res.status(500).json({
+            message: 'Failed to add comment, server error!',
+            success: false,
+            status: 'fail'
+        });
+    }
+}
+
+module.exports.deleteComment = async (req, res, next) => {
+    try {
+        const { commentId, postId } = req.body;
+
+        // check if the post exist
+        const post = await Post.findById({ _id: postId });
+
+        // if post does not exist
+        if (post === null) {
+            return res.status(400).json({
+                'message': 'Post does not exist!',
+                success: false,
+                status: 'fail'
+            });
+        }
+
+        // check if the comment exist and
+        // comment being deleted was added by the logged in user
+        // return an array
+        let comment = post.comments.filter((el, idx) => {
+            return el._id.equals(commentId) && el.user === req.username;
+        })
+
+        // extract comment from 1st index, if present
+        comment = comment[0];
+
+        // if comment does not exist
+        if (comment === null || comment===undefined) {
+            return res.status(400).json({
+                'message': 'Comment does not exist!',
+                success: false,
+                status: 'fail'
+            });
+        }
+
+
+        // delete comment from the array of post comments
+        const commentUpdate = await Post.updateOne({
+            _id: postId,
+            'comments': {
+                $elemMatch: { _id: comment._id }
+            }
+        }, {
+            $pull: {
+                'comments': { _id: comment._id }
+            }
+        });
+
+        // if comment deleted successfull
+        if (commentUpdate.modifiedCount > 0) {
+            return res.status(204).json({
+                message: 'Comment deleted successfully!',
+                success: true,
+                status: 'success'
+            });
+        }
+
+        // if failed to delete comment
+        else {
+            return res.status(400).json({
+                message: 'Failed to delete comment!',
+                success: false,
+                status: 'fail'
+            });
+        }
+
+    } catch (error) {
+        console.log('Failed to delete comment, server error!', error);
+        return res.status(500).json({
+            message: 'Failed to delete comment, server error',
+            success: false,
+            status: 'fail'
+        });
     }
 }
 

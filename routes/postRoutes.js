@@ -9,5 +9,7 @@ router
     .post('/createPost', verify, postController.createPost)
     .patch('/update/:postId', verify, postController.updatePost)
     .delete('/delete/:postId', verify, postController.deletePost)
+    .post('/comment', verify, postController.addComment)
+    .delete('/deletecomment', verify, postController.deleteComment)
 
 module.exports = router;

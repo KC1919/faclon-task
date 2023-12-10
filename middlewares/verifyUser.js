@@ -7,6 +7,7 @@ const verify = async (req, res, next) => {
         const payload = await jwt.verify(token, process.env.JWT_SECRET_KEY);
         req.userId = payload.userId;
         req.email = payload.email;
+        req.username = payload.username
 
         next();
     } catch (error) {
@@ -19,4 +20,4 @@ const verify = async (req, res, next) => {
     }
 }
 
-module.exports=verify;
+module.exports = verify;
