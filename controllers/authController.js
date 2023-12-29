@@ -9,7 +9,7 @@ const signToken = async (payload) => {
 
 const createSendToken = async (user, statusCode, res) => {
 
-    const token = await signToken({userId:user._id, email:user.email});
+    const token = await signToken({userId:user._id, email:user.email, username:user.username});
     const cookieOptions = {
         maxAge: Date.now() + 24 * 60 * 60 * 1000,
         httpOnly: false
@@ -101,7 +101,7 @@ module.exports.register = async (req, res, next) => {
             // sent back to the client side
             newUser.password = undefined;
 
-            return res.status(200).json({
+            return res.status(201).json({
                 message: "User Registered successfully",
                 success: true,
                 token,
@@ -125,12 +125,9 @@ module.exports.register = async (req, res, next) => {
     }
 }
 
-module.exports.logout = (req, res) => {
+module.exports.logout = (req, res, next) => {
     try {
-        res.cookie('secret', {
-            maxAge: Date.now()
-        });
-
+        res.clearCookie('secret');
         return res.status(200).json({
             message: "Logged out successfully!",
             success: true
