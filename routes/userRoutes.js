@@ -4,8 +4,11 @@ const verify = require('../middlewares/verifyUser');
 const userController = require('../controllers/userController');
 
 router
-    .post('/request', verify, userController.makeFriendRequest)
-    .patch('/update', verify)
-    .delete('/delete/:id', verify);
+    .post('/sendrequest', verify, userController.makeFriendRequest)
+    .post('/acceptrequest/:username', verify, userController.acceptFriendRequest)
+    .post('/rejectrequest/:username', verify, userController.rejectFriendRequest)
+    .patch('/update', verify, userController.updateUserDetails)
+    .patch('/updatePassword', verify, userController.updateUserPassword)
+    .delete('/deleteAccount/', verify, userController.deleteUserAccount);
 
 module.exports = router;

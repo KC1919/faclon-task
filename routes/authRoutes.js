@@ -6,6 +6,6 @@ const verify = require('../middlewares/verifyUser');
 router
     .post('/login', authController.login)
     .post('/signup', authController.register)
-    .post('/logout', verify, authController.logout)
+    .get('/logout', verify, authController.logout)
 
 module.exports=router;
