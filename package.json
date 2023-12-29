@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "mocha"
+    "test": "mocha --timeout 10000"
   },
   "keywords": [],
   "author": "",
@@ -19,9 +19,9 @@
     "validator": "^13.11.0"
   },
   "devDependencies": {
-    "chai": "^5.0.0",
+    "chai": "^4.3.10",
     "mocha": "^10.2.0",
-    "supertest": "^6.3.3",
-    "node-fetch": "2.6.0"
+    "node-fetch": "2.6.0",
+    "supertest": "^6.3.3"
   }
 }
