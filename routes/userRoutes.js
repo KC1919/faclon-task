@@ -4,8 +4,7 @@ const verify = require('../middlewares/verifyUser');
 const userController = require('../controllers/userController');
 
 router
-    .post('/sendrequest', verify, userController.makeFriendRequest)
-    .post('/acceptrequest/:username', verify, userController.acceptFriendRequest)
+    .post('/request', verify, userController.makeFriendRequest)
     .patch('/update', verify)
     .delete('/delete/:id', verify);
 
